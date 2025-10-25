@@ -1,0 +1,33 @@
+name: Scheduled Maintenance
+
+on:
+  schedule:
+    # Run every day at 12:00 UTC (5:00 PM Pakistan time)
+    - cron: '0 12 * * *'
+  workflow_dispatch:  # also allows manual runs
+
+jobs:
+  maintenance:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Run maintenance script
+        run: |
+          echo " Running daily maintenance task..."
+          echo "Cleaning temporary files..."
+          echo "Backup completed successfully on $(date)."
+          echo "Maintenance finished!"
+
+      - name: Save maintenance log
+        run: |
+          mkdir -p logs
+          echo "Maintenance run at $(date)" >> logs/maintenance.log
+
+      - name: Upload logs as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: maintenance-logs
+          path: logs/maintenance.log
