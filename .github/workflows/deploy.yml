@@ -24,8 +24,13 @@ jobs:
         with:
           node-version: 18
 
-      - name: Install dependencies
-        run: npm install
+      - name: Install dependencies (skip if none)
+        run: |
+          if [ -f "package.json" ]; then
+            npm install
+          else
+            echo "No package.json found — skipping npm install."
+          fi
 
       - name: Build project (skip if no build script)
         run: |
@@ -35,14 +40,12 @@ jobs:
             echo "No build script found — skipping build step."
           fi
 
-
-      - name: Upload build files
+      - name: Upload site files
         uses: actions/upload-pages-artifact@v3
         with:
-          path: |
-            dist
-            build
-            public
+          
+          path: public
+          if-no-files-found: error
 
   deploy:
     needs: build
