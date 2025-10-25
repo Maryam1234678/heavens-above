@@ -27,13 +27,14 @@ jobs:
       - name: Install dependencies
         run: npm install
 
-      - name: Build project
+      - name: Build project (skip if no build script)
         run: |
-          if npm run | findstr build; then
+          if npm run | grep -q build; then
             npm run build
           else
-            echo "No build script found — skipping build."
+            echo "No build script found — skipping build step."
           fi
+
 
       - name: Upload build files
         uses: actions/upload-pages-artifact@v3
