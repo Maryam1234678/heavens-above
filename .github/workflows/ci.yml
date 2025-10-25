@@ -1,0 +1,53 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:   # allows manual runs
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        node-version: [18.x]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Use Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run Linter (optional)
+        run: |
+          if npm run | findstr lint; then
+            npm run lint
+          else
+            echo "No lint script found. Skipping linting."
+          fi
+
+      - name: Run Tests
+        run: |
+          if npm run | findstr test; then
+            npm test
+          else
+            echo "No test script found. Skipping tests."
+          fi
+
+      - name: Upload Test Reports (if any)
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-reports
+          path: |
+            test-reports/
+            coverage/
+          if-no-files-found: ignore
