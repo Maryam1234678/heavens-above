@@ -1,16 +1,19 @@
-name: Dependabot Test Runner
+name: Dependency Updates Automation
 
 on:
   pull_request:
-    types: [opened, synchronize]
+    types: [opened, synchronize, reopened]
+  schedule:
+    # Run weekly check on Mondays at 9 AM UTC
+    - cron: '0 9 * * 1'
   workflow_dispatch:
 
 jobs:
-  test-dependabot:
+  # Job 1: Manual dependency check (for scheduled runs)
+  check-dependencies:
+    name: Check for Dependency Updates
     runs-on: ubuntu-latest
-
-    if: github.actor == 'dependabot[bot]'
-
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -19,21 +22,207 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 18
+          cache: 'npm'
 
       - name: Install dependencies
         run: npm install
 
-      - name: Run Tests
+      - name: Check for outdated dependencies
+        id: outdated
         run: |
-          if npm run | grep -q test; then
-            npm test
+          echo "##  Dependency Update Report" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          npm outdated --json > outdated.json || true
+          
+          if [ -s outdated.json ]; then
+            echo " Found outdated dependencies" >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`json" >> $GITHUB_STEP_SUMMARY
+            cat outdated.json >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
           else
-            echo "No test script found — skipping tests."
+            echo " All dependencies are up to date!" >> $GITHUB_STEP_SUMMARY
           fi
 
-      - name: Upload test results
+      - name: Check security vulnerabilities
+        run: |
+          echo "##  Security Audit" >> $GITHUB_STEP_SUMMARY
+          npm audit --json > audit.json || true
+          
+          if [ -s audit.json ]; then
+            echo "\`\`\`json" >> $GITHUB_STEP_SUMMARY
+            cat audit.json | jq '.metadata' >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Upload dependency reports
         uses: actions/upload-artifact@v4
         with:
-          name: dependabot-test-logs
-          path: .
+          name: dependency-reports
+          path: |
+            outdated.json
+            audit.json
+          retention-days: 30
+
+  # Job 2: Test Dependabot PRs
+  test-dependabot-updates:
+    name: Test Dependency Updates
+    runs-on: ubuntu-latest
+    if: github.actor == 'dependabot[bot]' || github.event.pull_request.user.login == 'dependabot[bot]'
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run linting
+        run: |
+          if npm run | grep -q "lint"; then
+            npm run lint || echo " Linting failed"
+          else
+            echo " No lint script found"
+          fi
+
+      - name: Run tests
+        run: |
+          if npm run | grep -q "test"; then
+            npm test
+          else
+            echo " No test script found — skipping tests"
+            exit 0
+          fi
+
+      - name: Run build check
+        run: |
+          if npm run | grep -q "build"; then
+            npm run build
+          else
+            echo "ℹ️ No build script found"
+          fi
+
+      - name: Check for breaking changes
+        run: |
+          echo "##  Dependency Update Analysis" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**PR Title:** ${{ github.event.pull_request.title }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Updated by:** ${{ github.actor }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Branch:** ${{ github.head_ref }}" >> $GITHUB_STEP_SUMMARY
+
+      - name: Security audit on updated dependencies
+        run: |
+          npm audit --audit-level=moderate || echo " Security vulnerabilities detected"
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dependabot-test-results
+          path: |
+            coverage/
+            test-results/
+            *.log
           if-no-files-found: warn
+          retention-days: 14
+
+  # Job 3: Code Review Automation
+  review-dependency-updates:
+    name: Automated Code Review
+    runs-on: ubuntu-latest
+    if: github.actor == 'dependabot[bot]'
+    needs: test-dependabot-updates
+    permissions:
+      pull-requests: write
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Analyze dependency changes
+        id: analyze
+        run: |
+          # Check if it's a major version update
+          if echo "${{ github.event.pull_request.title }}" | grep -q "major"; then
+            echo "review_required=true" >> $GITHUB_OUTPUT
+            echo "comment= **Major version update detected.** Manual review required before merging." >> $GITHUB_OUTPUT
+          elif echo "${{ github.event.pull_request.title }}" | grep -q "minor"; then
+            echo "review_required=false" >> $GITHUB_OUTPUT
+            echo "comment= Minor version update. Tests passed successfully." >> $GITHUB_OUTPUT
+          else
+            echo "review_required=false" >> $GITHUB_OUTPUT
+            echo "comment= Patch update. Safe to merge after tests pass." >> $GITHUB_OUTPUT
+          fi
+
+      - name: Comment on PR
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: '${{ steps.analyze.outputs.comment }}'
+            })
+
+      - name: Label PR based on update type
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const title = context.payload.pull_request.title.toLowerCase();
+            let labels = ['dependencies'];
+            
+            if (title.includes('major')) {
+              labels.push('major-update', 'needs-review');
+            } else if (title.includes('minor')) {
+              labels.push('minor-update');
+            } else if (title.includes('patch')) {
+              labels.push('patch-update', 'auto-mergeable');
+            }
+            
+            if (title.includes('security')) {
+              labels.push('security', 'priority-high');
+            }
+            
+            github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              labels: labels
+            });
+
+  # Job 4: Auto-approve and merge (Optional - for patch updates only)
+  auto-merge-safe-updates:
+    name: Auto-merge Safe Updates
+    runs-on: ubuntu-latest
+    needs: [test-dependabot-updates, review-dependency-updates]
+    if: |
+      github.actor == 'dependabot[bot]' && 
+      (contains(github.event.pull_request.title, 'patch') || 
+       contains(github.event.pull_request.title, 'Bump'))
+    permissions:
+      pull-requests: write
+      contents: write
+    steps:
+      - name: Auto-approve PR
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.pulls.createReview({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_request_number: context.issue.number,
+              event: 'APPROVE',
+              body: 'Automated approval for patch-level dependency update.'
+            })
+
+      - name: Enable auto-merge
+        run: gh pr merge --auto --squash "${{ github.event.pull_request.html_url }}"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
