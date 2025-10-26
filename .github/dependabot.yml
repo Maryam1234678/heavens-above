@@ -1,42 +1,41 @@
 version: 2
-updates:
-  # Monitor npm dependencies
-  - package-ecosystem: "npm"
-    directory: "/"
-    schedule:
-      interval: "weekly"
-      day: "monday"
-      time: "09:00"
-    open-pull-requests-limit: 5
-    reviewers:
-      - "your-github-username"
-    assignees:
-      - "your-github-username"
-    labels:
-      - "dependencies"
-      - "automated"
-    commit-message:
-      prefix: "chore"
-      include: "scope"
-    # Versioning policy
-    versioning-strategy: increase
-    # Group updates
-    groups:
-      production-dependencies:
-        patterns:
-          - "*"
-        exclude-patterns:
-          - "@types/*"
-      development-dependencies:
-        dependency-type: "development"
-        patterns:
-          - "*"
 
-  # Monitor GitHub Actions
+# Dependabot configuration for Heavens Above project
+# This file configures automated dependency updates
+
+updates:
+  # Monitor GitHub Actions workflow dependencies
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
+     
       interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "UTC"
+    
+  
+    open-pull-requests-limit: 3
+    
+    assignees:
+      - "Maryam1234678"  
+    
+    reviewers:
+      - "Maryam1234678"  
+    
     labels:
-      - "github-actions"
       - "dependencies"
+      - "github-actions"
+      - "automated"
+    
+    commit-message:
+      prefix: "ci"
+      include: "scope"
+    
+    pull-request-branch-name:
+      separator: "/"
+    
+    rebase-strategy: "auto"
+    
+    allow:
+      - dependency-type: "all"
