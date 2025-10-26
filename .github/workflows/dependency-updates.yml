@@ -1,0 +1,39 @@
+name: Dependabot Test Runner
+
+on:
+  pull_request:
+    types: [opened, synchronize]
+  workflow_dispatch:
+
+jobs:
+  test-dependabot:
+    runs-on: ubuntu-latest
+
+    if: github.actor == 'dependabot[bot]'
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Run Tests
+        run: |
+          if npm run | grep -q test; then
+            npm test
+          else
+            echo "No test script found — skipping tests."
+          fi
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        with:
+          name: dependabot-test-logs
+          path: .
+          if-no-files-found: warn
