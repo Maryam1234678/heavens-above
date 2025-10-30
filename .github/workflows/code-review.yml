@@ -10,7 +10,8 @@ on:
   pull_request_review:
     types: [submitted]
   workflow_dispatch:
-  
+
+# Set permissions for the workflow
 permissions:
   contents: read
   pull-requests: write
@@ -19,11 +20,11 @@ permissions:
   issues: write
 
 jobs:
- 
+  # Job 1: PR Validation and Basic Checks
   pr-validation:
     name: PR Validation & Size Check
     runs-on: ubuntu-latest
-    if: github.event.pull_request.draft == false
+    if: github.event_name == 'pull_request' || github.event_name == 'pull_request_review'
     
     steps:
       - name: Checkout code
@@ -35,6 +36,12 @@ jobs:
         uses: actions/github-script@v7
         with:
           script: |
+            // Check if PR context exists
+            if (!context.payload.pull_request) {
+              console.log('No pull request context available');
+              return;
+            }
+            
             const additions = context.payload.pull_request.additions || 0;
             const deletions = context.payload.pull_request.deletions || 0;
             const changes = additions + deletions;
@@ -71,7 +78,7 @@ jobs:
             
             // Add warning for large PRs
             if (changes > 500) {
-              const comment = ` **Large PR Warning**\n\nThis PR has ${changes} lines changed. Consider breaking it into smaller PRs for easier review.\n\n**Best practices:**\n- PRs with <100 lines get reviewed faster\n- Smaller PRs reduce bug introduction risk\n- Easier to review and test`;
+              const comment = `⚠️ **Large PR Warning**\n\nThis PR has ${changes} lines changed. Consider breaking it into smaller PRs for easier review.\n\n**Best practices:**\n- PRs with <100 lines get reviewed faster\n- Smaller PRs reduce bug introduction risk\n- Easier to review and test`;
               
               await github.rest.issues.createComment({
                 owner: context.repo.owner,
@@ -85,40 +92,53 @@ jobs:
         uses: actions/github-script@v7
         with:
           script: |
+            // Check if PR context exists
+            if (!context.payload.pull_request) {
+              console.log('No pull request context available');
+              return;
+            }
+            
             const title = context.payload.pull_request.title;
             const validPrefixes = ['feat', 'fix', 'docs', 'style', 'refactor', 'test', 'chore', 'ci', 'perf'];
             const pattern = new RegExp(`^(${validPrefixes.join('|')})(\\(.+\\))?: .+`);
             
             if (!pattern.test(title)) {
-              core.setFailed(` PR title must follow conventional commits format: "type(scope): description"\n\nValid types: ${validPrefixes.join(', ')}\n\nExample: "feat(auth): add login functionality"`);
+              core.setFailed(`❌ PR title must follow conventional commits format: "type(scope): description"\n\nValid types: ${validPrefixes.join(', ')}\n\nExample: "feat(auth): add login functionality"`);
               
               await github.rest.issues.createComment({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 issue_number: context.issue.number,
-                body: ` **Invalid PR Title Format**\n\nYour PR title must follow [Conventional Commits](https://www.conventionalcommits.org/) format:\n\n\`\`\`\ntype(scope): description\n\`\`\`\n\n**Valid types:** ${validPrefixes.join(', ')}\n\n**Examples:**\n- \`feat(auth): add login functionality\`\n- \`fix(api): resolve CORS issue\`\n- \`docs(readme): update installation steps\``
+                body: `❌ **Invalid PR Title Format**\n\nYour PR title must follow [Conventional Commits](https://www.conventionalcommits.org/) format:\n\n\`\`\`\ntype(scope): description\n\`\`\`\n\n**Valid types:** ${validPrefixes.join(', ')}\n\n**Examples:**\n- \`feat(auth): add login functionality\`\n- \`fix(api): resolve CORS issue\`\n- \`docs(readme): update installation steps\``
               });
             } else {
-              console.log(' PR title follows conventional commits format');
+              console.log('✅ PR title follows conventional commits format');
             }
 
       - name: Check for Description
         uses: actions/github-script@v7
         with:
           script: |
+            // Check if PR context exists
+            if (!context.payload.pull_request) {
+              console.log('No pull request context available');
+              return;
+            }
+            
             const body = context.payload.pull_request.body || '';
             if (body.trim().length < 50) {
               await github.rest.issues.createComment({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 issue_number: context.issue.number,
-                body: ` **Missing PR Description**\n\nPlease add a detailed description explaining:\n- What changes were made\n- Why these changes were necessary\n- How to test the changes\n- Any breaking changes or dependencies`
+                body: `⚠️ **Missing PR Description**\n\nPlease add a detailed description explaining:\n- What changes were made\n- Why these changes were necessary\n- How to test the changes\n- Any breaking changes or dependencies`
               });
             }
 
       - name: Generate PR Summary
+        if: github.event.pull_request
         run: |
-          echo "##  PR Summary" >> $GITHUB_STEP_SUMMARY
+          echo "## 📊 PR Summary" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "- **Author:** ${{ github.event.pull_request.user.login }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Branch:** \`${{ github.head_ref }}\` → \`${{ github.base_ref }}\`" >> $GITHUB_STEP_SUMMARY
@@ -130,8 +150,7 @@ jobs:
   code-quality:
     name: Code Quality Analysis
     runs-on: ubuntu-latest
-    if: github.event.pull_request.draft == false
-    needs: pr-validation
+    if: github.event_name == 'pull_request' || github.event_name == 'pull_request_review' || github.event_name == 'workflow_dispatch'
     
     steps:
       - name: Checkout code
@@ -165,26 +184,26 @@ jobs:
             eslint . --ext .js,.jsx,.ts,.tsx --format json --output-file eslint-report.json || true
             
             if [ -f "eslint-report.json" ]; then
-              echo "## ESLint Results" >> $GITHUB_STEP_SUMMARY
+              echo "## 🔍 ESLint Results" >> $GITHUB_STEP_SUMMARY
               echo "" >> $GITHUB_STEP_SUMMARY
               echo "\`\`\`json" >> $GITHUB_STEP_SUMMARY
               cat eslint-report.json | head -50 >> $GITHUB_STEP_SUMMARY
               echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
             fi
           else
-            echo " No ESLint configuration found" >> $GITHUB_STEP_SUMMARY
+            echo "⚠️ No ESLint configuration found" >> $GITHUB_STEP_SUMMARY
           fi
         continue-on-error: true
 
       - name: HTML/CSS/JS Validation (Static Sites)
         if: steps.check-node.outputs.has_node == 'false'
         run: |
-          echo "##  Static File Quality Check" >> $GITHUB_STEP_SUMMARY
+          echo "## 🔍 Static File Quality Check" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           
           # Check for console.log statements
           if grep -r "console\.log" --include="*.js" . 2>/dev/null; then
-            echo " **Warning:** Found console.log statements" >> $GITHUB_STEP_SUMMARY
+            echo "⚠️ **Warning:** Found console.log statements" >> $GITHUB_STEP_SUMMARY
             echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
             grep -rn "console\.log" --include="*.js" . | head -10 >> $GITHUB_STEP_SUMMARY
             echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
@@ -192,7 +211,7 @@ jobs:
           
           # Check for TODO comments
           if grep -r "TODO\|FIXME" --include="*.js" --include="*.html" --include="*.css" . 2>/dev/null; then
-            echo " **Found TODO/FIXME comments:**" >> $GITHUB_STEP_SUMMARY
+            echo "📝 **Found TODO/FIXME comments:**" >> $GITHUB_STEP_SUMMARY
             echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
             grep -rn "TODO\|FIXME" --include="*.js" --include="*.html" --include="*.css" . | head -10 >> $GITHUB_STEP_SUMMARY
             echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
@@ -200,7 +219,7 @@ jobs:
 
       - name: Check Code Complexity
         run: |
-          echo "##  Code Metrics" >> $GITHUB_STEP_SUMMARY
+          echo "## 📈 Code Metrics" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           
           # Count lines of code
@@ -227,8 +246,7 @@ jobs:
   security-scan:
     name: Security Vulnerability Scan
     runs-on: ubuntu-latest
-    if: github.event.pull_request.draft == false
-    needs: pr-validation
+    if: github.event_name == 'pull_request' || github.event_name == 'pull_request_review' || github.event_name == 'workflow_dispatch'
     
     steps:
       - name: Checkout code
@@ -255,7 +273,7 @@ jobs:
       - name: Run npm audit
         if: steps.check-node.outputs.has_node == 'true'
         run: |
-          echo "##  Security Audit Results" >> $GITHUB_STEP_SUMMARY
+          echo "## 🔒 Security Audit Results" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           
           npm audit --json > audit-report.json 2>&1 || true
@@ -272,14 +290,14 @@ jobs:
               
               npm audit 2>&1 | head -50 >> $GITHUB_STEP_SUMMARY || true
             else
-              echo " No vulnerabilities found!" >> $GITHUB_STEP_SUMMARY
+              echo "✅ No vulnerabilities found!" >> $GITHUB_STEP_SUMMARY
             fi
           fi
         continue-on-error: true
 
       - name: Check for sensitive data
         run: |
-          echo "##  Sensitive Data Check" >> $GITHUB_STEP_SUMMARY
+          echo "## 🔐 Sensitive Data Check" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           
           # Check for potential secrets/keys
@@ -299,12 +317,12 @@ jobs:
           for pattern in "${patterns[@]}"; do
             if grep -riE "$pattern" --include="*.js" --include="*.json" --include="*.env" --exclude="package-lock.json" . 2>/dev/null; then
               found_secrets=true
-              echo " **Warning:** Potential secret/credential found with pattern: \`$pattern\`" >> $GITHUB_STEP_SUMMARY
+              echo "⚠️ **Warning:** Potential secret/credential found with pattern: \`$pattern\`" >> $GITHUB_STEP_SUMMARY
             fi
           done
           
           if [ "$found_secrets" = false ]; then
-            echo " No obvious secrets or credentials detected" >> $GITHUB_STEP_SUMMARY
+            echo "✅ No obvious secrets or credentials detected" >> $GITHUB_STEP_SUMMARY
           else
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "**Action Required:** Review and remove any hardcoded credentials!" >> $GITHUB_STEP_SUMMARY
@@ -313,7 +331,7 @@ jobs:
       - name: Check for .env files
         run: |
           if find . -name ".env" -o -name ".env.*" | grep -q .; then
-            echo " **Warning:** .env files found in repository!" >> $GITHUB_STEP_SUMMARY
+            echo "⚠️ **Warning:** .env files found in repository!" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
             find . -name ".env" -o -name ".env.*" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
@@ -332,8 +350,7 @@ jobs:
   coding-standards:
     name: Coding Standards Enforcement
     runs-on: ubuntu-latest
-    if: github.event.pull_request.draft == false
-    needs: pr-validation
+    if: github.event_name == 'pull_request' || github.event_name == 'pull_request_review' || github.event_name == 'workflow_dispatch'
     
     steps:
       - name: Checkout code
@@ -343,24 +360,24 @@ jobs:
 
       - name: Check file naming conventions
         run: |
-          echo "##  File Naming Standards" >> $GITHUB_STEP_SUMMARY
+          echo "## 📝 File Naming Standards" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           
           # Check for spaces in filenames
           files_with_spaces=$(find . -type f -name "* *" -not -path "*/node_modules/*" -not -path "*/.git/*" || true)
           if [ ! -z "$files_with_spaces" ]; then
-            echo " **Files with spaces found (should use kebab-case or camelCase):**" >> $GITHUB_STEP_SUMMARY
+            echo "❌ **Files with spaces found (should use kebab-case or camelCase):**" >> $GITHUB_STEP_SUMMARY
             echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
             echo "$files_with_spaces" >> $GITHUB_STEP_SUMMARY
             echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
           else
-            echo " No files with spaces in names" >> $GITHUB_STEP_SUMMARY
+            echo "✅ No files with spaces in names" >> $GITHUB_STEP_SUMMARY
           fi
 
       - name: Check for proper file structure
         run: |
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "##  Repository Structure" >> $GITHUB_STEP_SUMMARY
+          echo "## 📁 Repository Structure" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
           tree -L 2 -I 'node_modules|.git' . || ls -la >> $GITHUB_STEP_SUMMARY
@@ -369,24 +386,24 @@ jobs:
       - name: Check code formatting
         run: |
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "##  Code Formatting Check" >> $GITHUB_STEP_SUMMARY
+          echo "## 🎨 Code Formatting Check" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           
           # Check for consistent indentation
           mixed_indentation=$(find . -name "*.js" -not -path "*/node_modules/*" -exec grep -l "^	" {} \; 2>/dev/null | head -5 || true)
           if [ ! -z "$mixed_indentation" ]; then
-            echo " **Mixed indentation detected (tabs vs spaces):**" >> $GITHUB_STEP_SUMMARY
+            echo "⚠️ **Mixed indentation detected (tabs vs spaces):**" >> $GITHUB_STEP_SUMMARY
             echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
             echo "$mixed_indentation" >> $GITHUB_STEP_SUMMARY
             echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
           else
-            echo " Consistent indentation" >> $GITHUB_STEP_SUMMARY
+            echo "✅ Consistent indentation" >> $GITHUB_STEP_SUMMARY
           fi
 
       - name: Check for code duplication
         run: |
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "##  Code Duplication Check" >> $GITHUB_STEP_SUMMARY
+          echo "## 🔁 Code Duplication Check" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           
           # Simple duplication check (looking for identical functions)
@@ -401,8 +418,7 @@ jobs:
   test-coverage:
     name: Test Coverage Analysis
     runs-on: ubuntu-latest
-    if: github.event.pull_request.draft == false
-    needs: pr-validation
+    if: github.event_name == 'pull_request' || github.event_name == 'pull_request_review' || github.event_name == 'workflow_dispatch'
     
     steps:
       - name: Checkout code
@@ -441,7 +457,7 @@ jobs:
       - name: Check test coverage
         if: steps.check-tests.outputs.has_tests == 'false'
         run: |
-          echo "##  No Tests Found" >> $GITHUB_STEP_SUMMARY
+          echo "## ⚠️ No Tests Found" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "Consider adding tests to improve code quality and catch bugs early." >> $GITHUB_STEP_SUMMARY
 
@@ -449,8 +465,8 @@ jobs:
   review-summary:
     name: Generate Review Summary
     runs-on: ubuntu-latest
-    if: always() && github.event.pull_request.draft == false
-    needs: [pr-validation, code-quality, security-scan, coding-standards, test-coverage]
+    if: always() && (github.event_name == 'pull_request' || github.event_name == 'pull_request_review')
+    needs: [code-quality, security-scan, coding-standards, test-coverage]
     permissions:
       pull-requests: write
     
@@ -459,7 +475,12 @@ jobs:
         uses: actions/github-script@v7
         with:
           script: |
-            const prValidation = '${{ needs.pr-validation.result }}';
+            // Only run if this is a PR event
+            if (!context.payload.pull_request) {
+              console.log('Skipping summary - no PR context');
+              return;
+            }
+            
             const codeQuality = '${{ needs.code-quality.result }}';
             const securityScan = '${{ needs.security-scan.result }}';
             const codingStandards = '${{ needs.coding-standards.result }}';
@@ -475,7 +496,6 @@ jobs:
             
             | Check | Status | Result |
             |-------|--------|--------|
-            | PR Validation | ${getEmoji(prValidation)} | ${prValidation} |
             | Code Quality | ${getEmoji(codeQuality)} | ${codeQuality} |
             | Security Scan | ${getEmoji(securityScan)} | ${securityScan} |
             | Coding Standards | ${getEmoji(codingStandards)} | ${codingStandards} |
@@ -483,7 +503,7 @@ jobs:
             
             ---
             
-          
+            ### 📋 Review Checklist
             
             - [ ] All automated checks have passed
             - [ ] Code has been manually reviewed
@@ -491,14 +511,14 @@ jobs:
             - [ ] Documentation has been updated
             - [ ] No breaking changes or dependencies noted
             
+            ### 💡 Next Steps
             
-            
-            ${prValidation === 'success' && codeQuality === 'success' && securityScan === 'success' ? 
-              ' **Ready for manual review!** All automated checks passed.' : 
-              ' **Action required:** Please address the failing checks above before requesting review.'}
+            ${codeQuality === 'success' && securityScan === 'success' ? 
+              '✅ **Ready for manual review!** All automated checks passed.' : 
+              '⚠️ **Action required:** Please address the failing checks above before requesting review.'}
             
             ---
-            <sub> This is an automated review. For detailed results, check the [workflow run](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}).</sub>`;
+            <sub>🤖 This is an automated review. For detailed results, check the [workflow run](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}).</sub>`;
             
             // Find existing bot comment
             const { data: comments } = await github.rest.issues.listComments({
@@ -534,8 +554,13 @@ jobs:
         uses: actions/github-script@v7
         with:
           script: |
+            // Only run if this is a PR event
+            if (!context.payload.pull_request) {
+              console.log('Skipping status update - no PR context');
+              return;
+            }
+            
             const allPassed = 
-              '${{ needs.pr-validation.result }}' === 'success' &&
               '${{ needs.code-quality.result }}' === 'success' &&
               '${{ needs.security-scan.result }}' === 'success' &&
               '${{ needs.coding-standards.result }}' === 'success';
