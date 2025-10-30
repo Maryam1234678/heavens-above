@@ -162,95 +162,33 @@ jobs:
       - name: Build Simple Documentation
         if: steps.detect-docs.outputs.doc_type == 'simple'
         run: |
-          # Create output directory
           mkdir -p _site
-          
-          # Install markdown converter
           npm install -g marked
+          echo "$(npm bin -g)" >> $GITHUB_PATH
           
-          # Create a simple HTML template
           cat > _site/template.html << 'EOF'
           <!DOCTYPE html>
           <html lang="en">
-          <head>
-              <meta charset="UTF-8">
-              <meta name="viewport" content="width=device-width, initial-scale=1.0">
-              <title>{{TITLE}}</title>
-              <style>
-                  body {
-                      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-                      line-height: 1.6;
-                      max-width: 900px;
-                      margin: 0 auto;
-                      padding: 20px;
-                      color: #333;
-                  }
-                  pre {
-                      background: #f4f4f4;
-                      border: 1px solid #ddd;
-                      border-radius: 4px;
-                      padding: 15px;
-                      overflow-x: auto;
-                  }
-                  code {
-                      background: #f4f4f4;
-                      padding: 2px 6px;
-                      border-radius: 3px;
-                      font-family: 'Courier New', monospace;
-                  }
-                  h1, h2, h3 { color: #2c3e50; }
-                  a { color: #3498db; text-decoration: none; }
-                  a:hover { text-decoration: underline; }
-                  .nav { 
-                      background: #2c3e50; 
-                      color: white; 
-                      padding: 15px; 
-                      margin: -20px -20px 20px -20px;
-                      border-radius: 0;
-                  }
-                  .nav h1 { color: white; margin: 0; font-size: 24px; }
-                  .footer {
-                      margin-top: 50px;
-                      padding-top: 20px;
-                      border-top: 1px solid #ddd;
-                      color: #666;
-                      font-size: 14px;
-                  }
-              </style>
-          </head>
-          <body>
-              <div class="nav">
-                  <h1>{{PROJECT_NAME}} Documentation</h1>
-              </div>
-              {{CONTENT}}
-              <div class="footer">
-                  <p>Generated on {{DATE}} | <a href="https://github.com/{{REPO}}">View on GitHub</a></p>
-              </div>
-          </body>
+          <head><meta charset="UTF-8"><title>{{TITLE}}</title></head>
+          <body>{{CONTENT}}</body>
           </html>
           EOF
-          
-          # Convert README to HTML
+      
           if [ -f "README.md" ]; then
             PROJECT_NAME=$(basename $(pwd))
-            CONTENT=$(marked < README.md)
+            marked README.md > _site/content.html
             DATE=$(date '+%Y-%m-%d %H:%M:%S')
             REPO="${{ github.repository }}"
             
             sed -e "s|{{TITLE}}|$PROJECT_NAME Documentation|g" \
-                -e "s|{{PROJECT_NAME}}|$PROJECT_NAME|g" \
-                -e "s|{{CONTENT}}|$CONTENT|g" \
-                -e "s|{{DATE}}|$DATE|g" \
-                -e "s|{{REPO}}|$REPO|g" \
+                -e "/{{CONTENT}}/{
+                    r _site/content.html
+                    d
+                }" \
                 _site/template.html > _site/index.html
-            
-            rm _site/template.html
-            
-            # Copy additional markdown files if they exist
-            if [ -d "docs" ]; then
-              cp -r docs/* _site/ 2>/dev/null || true
-            fi
+            rm _site/content.html _site/template.html
           fi
+
           
           echo " Simple documentation built successfully" >> $GITHUB_STEP_SUMMARY
 
