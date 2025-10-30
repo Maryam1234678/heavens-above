@@ -1,7 +1,7 @@
 {
-  "timestamp": "2025-10-30T17:00:33Z",
-  "has_passes": ,
-  "pass_count": ,
-  "workflow_run": "18948740344",
+  "timestamp": "2025-10-30T17:04:50Z",
+  "has_passes": false,
+  "pass_count": 0,
+  "workflow_run": "18948864368",
   "notifications_sent": true
 }

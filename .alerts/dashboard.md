@@ -4,7 +4,7 @@
 **Status:** ⚪ No Current Alerts
 
 ## Current Status
-- **Visible Passes (24h):** 
+- **Visible Passes (24h):** 0
 - **Last Check:** $(date +'%Y-%m-%d %H:%M:%S UTC')
 - **Next Check:** In 6 hours
 
