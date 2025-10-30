@@ -1,0 +1,538 @@
+name: Documentation Deployment
+
+on:
+  push:
+    branches:
+      - main
+      - master
+    paths:
+      - 'docs/**'
+      - 'README.md'
+      - 'CONTRIBUTING.md'
+      - 'LICENSE'
+      - '.github/workflows/documentation.yml'
+  pull_request:
+    branches:
+      - main
+      - master
+    paths:
+      - 'docs/**'
+      - 'README.md'
+  workflow_dispatch:
+    inputs:
+      deploy_target:
+        description: 'Deployment target'
+        required: false
+        default: 'github-pages'
+        type: choice
+        options:
+          - github-pages
+          - preview-only
+
+# Sets permissions for GitHub Pages deployment
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+  pull-requests: write
+
+# Allow one concurrent deployment
+concurrency:
+  group: "pages-${{ github.ref }}"
+  cancel-in-progress: true
+
+jobs:
+  # Job 1: Build Documentation
+  build-docs:
+    name: Build Documentation
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history for proper versioning
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Detect Documentation Type
+        id: detect-docs
+        run: |
+          echo "##  Documentation Detection" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          # Check for different documentation frameworks
+          if [ -f "mkdocs.yml" ]; then
+            echo "doc_type=mkdocs" >> $GITHUB_OUTPUT
+            echo " Found MkDocs configuration" >> $GITHUB_STEP_SUMMARY
+          elif [ -f "conf.py" ] || [ -f "docs/conf.py" ]; then
+            echo "doc_type=sphinx" >> $GITHUB_OUTPUT
+            echo " Found Sphinx configuration" >> $GITHUB_STEP_SUMMARY
+          elif [ -f "docusaurus.config.js" ]; then
+            echo "doc_type=docusaurus" >> $GITHUB_OUTPUT
+            echo " Found Docusaurus configuration" >> $GITHUB_STEP_SUMMARY
+          elif [ -f "vuepress.config.js" ] || [ -f "docs/.vuepress/config.js" ]; then
+            echo "doc_type=vuepress" >> $GITHUB_OUTPUT
+            echo " Found VuePress configuration" >> $GITHUB_STEP_SUMMARY
+          elif [ -f "book.toml" ]; then
+            echo "doc_type=mdbook" >> $GITHUB_OUTPUT
+            echo " Found mdBook configuration" >> $GITHUB_STEP_SUMMARY
+          elif [ -d "docs" ] || [ -f "README.md" ]; then
+            echo "doc_type=simple" >> $GITHUB_OUTPUT
+            echo " Found Markdown files - using simple HTML generator" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "doc_type=none" >> $GITHUB_OUTPUT
+            echo " No documentation found" >> $GITHUB_STEP_SUMMARY
+          fi
+
+      # MkDocs Build
+      - name: Install MkDocs
+        if: steps.detect-docs.outputs.doc_type == 'mkdocs'
+        run: |
+          pip install mkdocs mkdocs-material mkdocs-minify-plugin mkdocs-redirects
+          pip install pymdown-extensions pygments
+
+      - name: Build MkDocs Documentation
+        if: steps.detect-docs.outputs.doc_type == 'mkdocs'
+        run: |
+          mkdocs build --verbose --strict
+          echo " MkDocs documentation built successfully" >> $GITHUB_STEP_SUMMARY
+
+      # Sphinx Build
+      - name: Install Sphinx
+        if: steps.detect-docs.outputs.doc_type == 'sphinx'
+        run: |
+          pip install sphinx sphinx-rtd-theme recommonmark sphinx-markdown-tables
+
+      - name: Build Sphinx Documentation
+        if: steps.detect-docs.outputs.doc_type == 'sphinx'
+        run: |
+          if [ -f "docs/conf.py" ]; then
+            cd docs && sphinx-build -b html . _build
+          else
+            sphinx-build -b html . _build
+          fi
+          echo " Sphinx documentation built successfully" >> $GITHUB_STEP_SUMMARY
+
+      # Docusaurus Build
+      - name: Install Docusaurus Dependencies
+        if: steps.detect-docs.outputs.doc_type == 'docusaurus'
+        run: npm install
+
+      - name: Build Docusaurus Documentation
+        if: steps.detect-docs.outputs.doc_type == 'docusaurus'
+        run: |
+          npm run build
+          echo " Docusaurus documentation built successfully" >> $GITHUB_STEP_SUMMARY
+
+      # VuePress Build
+      - name: Install VuePress Dependencies
+        if: steps.detect-docs.outputs.doc_type == 'vuepress'
+        run: npm install
+
+      - name: Build VuePress Documentation
+        if: steps.detect-docs.outputs.doc_type == 'vuepress'
+        run: |
+          npm run docs:build
+          echo " VuePress documentation built successfully" >> $GITHUB_STEP_SUMMARY
+
+      # mdBook Build
+      - name: Install mdBook
+        if: steps.detect-docs.outputs.doc_type == 'mdbook'
+        run: |
+          curl -sSL https://github.com/rust-lang/mdBook/releases/download/v0.4.36/mdbook-v0.4.36-x86_64-unknown-linux-gnu.tar.gz | tar -xz
+          chmod +x mdbook
+          sudo mv mdbook /usr/local/bin/
+
+      - name: Build mdBook Documentation
+        if: steps.detect-docs.outputs.doc_type == 'mdbook'
+        run: |
+          mdbook build
+          echo " mdBook documentation built successfully" >> $GITHUB_STEP_SUMMARY
+
+      # Simple Markdown to HTML (fallback)
+      - name: Build Simple Documentation
+        if: steps.detect-docs.outputs.doc_type == 'simple'
+        run: |
+          # Create output directory
+          mkdir -p _site
+          
+          # Install markdown converter
+          npm install -g marked
+          
+          # Create a simple HTML template
+          cat > _site/template.html << 'EOF'
+          <!DOCTYPE html>
+          <html lang="en">
+          <head>
+              <meta charset="UTF-8">
+              <meta name="viewport" content="width=device-width, initial-scale=1.0">
+              <title>{{TITLE}}</title>
+              <style>
+                  body {
+                      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+                      line-height: 1.6;
+                      max-width: 900px;
+                      margin: 0 auto;
+                      padding: 20px;
+                      color: #333;
+                  }
+                  pre {
+                      background: #f4f4f4;
+                      border: 1px solid #ddd;
+                      border-radius: 4px;
+                      padding: 15px;
+                      overflow-x: auto;
+                  }
+                  code {
+                      background: #f4f4f4;
+                      padding: 2px 6px;
+                      border-radius: 3px;
+                      font-family: 'Courier New', monospace;
+                  }
+                  h1, h2, h3 { color: #2c3e50; }
+                  a { color: #3498db; text-decoration: none; }
+                  a:hover { text-decoration: underline; }
+                  .nav { 
+                      background: #2c3e50; 
+                      color: white; 
+                      padding: 15px; 
+                      margin: -20px -20px 20px -20px;
+                      border-radius: 0;
+                  }
+                  .nav h1 { color: white; margin: 0; font-size: 24px; }
+                  .footer {
+                      margin-top: 50px;
+                      padding-top: 20px;
+                      border-top: 1px solid #ddd;
+                      color: #666;
+                      font-size: 14px;
+                  }
+              </style>
+          </head>
+          <body>
+              <div class="nav">
+                  <h1>{{PROJECT_NAME}} Documentation</h1>
+              </div>
+              {{CONTENT}}
+              <div class="footer">
+                  <p>Generated on {{DATE}} | <a href="https://github.com/{{REPO}}">View on GitHub</a></p>
+              </div>
+          </body>
+          </html>
+          EOF
+          
+          # Convert README to HTML
+          if [ -f "README.md" ]; then
+            PROJECT_NAME=$(basename $(pwd))
+            CONTENT=$(marked < README.md)
+            DATE=$(date '+%Y-%m-%d %H:%M:%S')
+            REPO="${{ github.repository }}"
+            
+            sed -e "s|{{TITLE}}|$PROJECT_NAME Documentation|g" \
+                -e "s|{{PROJECT_NAME}}|$PROJECT_NAME|g" \
+                -e "s|{{CONTENT}}|$CONTENT|g" \
+                -e "s|{{DATE}}|$DATE|g" \
+                -e "s|{{REPO}}|$REPO|g" \
+                _site/template.html > _site/index.html
+            
+            rm _site/template.html
+            
+            # Copy additional markdown files if they exist
+            if [ -d "docs" ]; then
+              cp -r docs/* _site/ 2>/dev/null || true
+            fi
+          fi
+          
+          echo " Simple documentation built successfully" >> $GITHUB_STEP_SUMMARY
+
+      - name: Organize Build Output
+        id: organize-output
+        run: |
+          # Determine output directory based on doc type
+          case "${{ steps.detect-docs.outputs.doc_type }}" in
+            mkdocs)
+              OUTPUT_DIR="site"
+              ;;
+            sphinx)
+              if [ -d "docs/_build" ]; then
+                OUTPUT_DIR="docs/_build"
+              else
+                OUTPUT_DIR="_build"
+              fi
+              ;;
+            docusaurus)
+              OUTPUT_DIR="build"
+              ;;
+            vuepress)
+              OUTPUT_DIR="docs/.vuepress/dist"
+              ;;
+            mdbook)
+              OUTPUT_DIR="book"
+              ;;
+            simple)
+              OUTPUT_DIR="_site"
+              ;;
+            *)
+              OUTPUT_DIR="_site"
+              mkdir -p _site
+              echo "<h1>No documentation found</h1>" > _site/index.html
+              ;;
+          esac
+          
+          echo "output_dir=$OUTPUT_DIR" >> $GITHUB_OUTPUT
+          
+          # Create a standardized output directory
+          mkdir -p _docs_output
+          
+          if [ -d "$OUTPUT_DIR" ]; then
+            cp -r $OUTPUT_DIR/* _docs_output/
+            echo " Documentation copied to _docs_output" >> $GITHUB_STEP_SUMMARY
+            
+            # Show directory structure
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "###  Built Documentation Structure:" >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+            ls -la _docs_output/ >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          else
+            echo " Output directory $OUTPUT_DIR not found" >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Add Version Info
+        run: |
+          cat > _docs_output/version.json << EOF
+          {
+            "version": "${{ github.ref_name }}",
+            "commit": "${{ github.sha }}",
+            "build_date": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+            "build_number": "${{ github.run_number }}",
+            "repository": "${{ github.repository }}"
+          }
+          EOF
+          
+          echo " Version info added" >> $GITHUB_STEP_SUMMARY
+
+      - name: Generate Sitemap
+        run: |
+          cat > _docs_output/sitemap.xml << 'EOF'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+            <url>
+              <loc>https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/</loc>
+              <lastmod>$(date -u +%Y-%m-%d)</lastmod>
+              <priority>1.0</priority>
+            </url>
+          </urlset>
+          EOF
+          
+          echo " Sitemap generated" >> $GITHUB_STEP_SUMMARY
+
+      - name: Validate Documentation
+        run: |
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "##  Documentation Validation" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          # Check if index.html exists
+          if [ -f "_docs_output/index.html" ]; then
+            echo " index.html found" >> $GITHUB_STEP_SUMMARY
+            
+            # Check file size
+            SIZE=$(du -sh _docs_output | cut -f1)
+            echo " Total size: $SIZE" >> $GITHUB_STEP_SUMMARY
+            
+            # Count HTML files
+            HTML_COUNT=$(find _docs_output -name "*.html" | wc -l)
+            echo " HTML files: $HTML_COUNT" >> $GITHUB_STEP_SUMMARY
+          else
+            echo " Warning: index.html not found" >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Upload Documentation Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: documentation-${{ github.sha }}
+          path: _docs_output/
+          retention-days: 30
+
+      - name: Setup Pages (for deployment)
+        if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.deploy_target == 'github-pages')
+        uses: actions/configure-pages@v4
+
+      - name: Upload Pages Artifact
+        if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.deploy_target == 'github-pages')
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: _docs_output/
+
+  # Job 2: Deploy to GitHub Pages
+  deploy-pages:
+    name: Deploy to GitHub Pages
+    runs-on: ubuntu-latest
+    needs: build-docs
+    if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.deploy_target == 'github-pages')
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
+
+      - name: Deployment Summary
+        run: |
+          echo "##  Deployment Successful!" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo " **Documentation URL:** ${{ steps.deployment.outputs.page_url }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Deployment Details:" >> $GITHUB_STEP_SUMMARY
+          echo "- **Commit:** ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Branch:** ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Deployed at:** $(date -u +%Y-%m-%dT%H:%M:%SZ)" >> $GITHUB_STEP_SUMMARY
+
+  # Job 3: Preview Documentation (for PRs)
+  preview-docs:
+    name: Preview Documentation
+    runs-on: ubuntu-latest
+    needs: build-docs
+    if: github.event_name == 'pull_request'
+    permissions:
+      pull-requests: write
+    
+    steps:
+      - name: Download Documentation Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: documentation-${{ github.sha }}
+          path: preview/
+
+      - name: Comment PR with Preview
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            
+            // Read version info
+            let versionInfo = {};
+            try {
+              versionInfo = JSON.parse(fs.readFileSync('preview/version.json', 'utf8'));
+            } catch (e) {
+              console.log('Could not read version info');
+            }
+            
+            const comment = `##  Documentation Preview
+            
+            Your documentation has been built successfully!
+            
+            ###  Build Information
+            - **Commit:** \`${versionInfo.commit?.substring(0, 7) || context.sha.substring(0, 7)}\`
+            - **Build Date:** ${versionInfo.build_date || new Date().toISOString()}
+            - **Build Number:** #${versionInfo.build_number || context.runNumber}
+            
+            ###  Download Preview
+            You can download the built documentation from the [workflow artifacts](https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}).
+            
+         
+            - Review the documentation changes
+            - Merge this PR to deploy to GitHub Pages
+            - Documentation will be live at: \`https://${context.repo.owner}.github.io/${context.repo.repo}/\`
+            
+            ---
+            <sub> This preview was generated automatically. The documentation will be deployed when this PR is merged to main.</sub>`;
+            
+            // Find existing preview comment
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+            
+            const botComment = comments.find(comment => 
+              comment.user.type === 'Bot' && 
+              comment.body.includes('Documentation Preview')
+            );
+            
+            if (botComment) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: botComment.id,
+                body: comment
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: comment
+              });
+            }
+
+      - name: Preview Summary
+        run: |
+          echo "##  Documentation Preview Ready" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo " Documentation built successfully for preview" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo " Download the preview artifact from this workflow run" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo " Merge this PR to deploy to GitHub Pages" >> $GITHUB_STEP_SUMMARY
+
+  # Job 4: Link Checker
+  check-links:
+    name: Check Documentation Links
+    runs-on: ubuntu-latest
+    needs: build-docs
+    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
+    
+    steps:
+      - name: Download Documentation Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: documentation-${{ github.sha }}
+          path: docs-output/
+
+      - name: Install Link Checker
+        run: npm install -g broken-link-checker
+
+      - name: Setup Local Server
+        run: |
+          cd docs-output
+          python3 -m http.server 8080 &
+          sleep 5
+
+      - name: Check Links
+        run: |
+          echo "##  Link Validation Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          # Run link checker
+          blc http://localhost:8080 -ro --exclude "linkedin.com|twitter.com|facebook.com" > link-check.log 2>&1 || true
+          
+          # Parse results
+          if grep -q "0 broken" link-check.log; then
+            echo " All links are valid!" >> $GITHUB_STEP_SUMMARY
+          else
+            echo " Some broken links detected:" >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+            grep "BROKEN" link-check.log | head -20 >> $GITHUB_STEP_SUMMARY || echo "No broken links details available" >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          fi
+        continue-on-error: true
+
+      - name: Upload Link Check Report
+        uses: actions/upload-artifact@v4
+        with:
+          name: link-check-report
+          path: link-check.log
+        if: always()
