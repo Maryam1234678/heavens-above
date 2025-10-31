@@ -25,34 +25,34 @@ jobs:
           cache: 'npm'
       
       - name: Install dependencies
-        run: npm ci
+        run: npm install
       
       - name: Clean old cache files
         run: |
-          echo "🧹 Cleaning cache..."
+          echo " Cleaning cache..."
           find ./cache -type f -mtime +7 -delete || true
-          echo "✅ Cache cleaned"
+          echo "Cache cleaned"
       
       - name: Backup database
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
         run: |
-          echo "💾 Starting backup..."
+          echo " Starting backup..."
           mkdir -p backups
           # Add your backup commands here
-          echo "✅ Backup completed"
+          echo " Backup completed"
       
       - name: Generate daily report
         run: |
-          echo "📊 Generating report..."
+          echo " Generating report..."
           node scripts/generate-report.js
-          echo "✅ Report generated"
+          echo " Report generated"
       
       - name: Health check
         run: |
-          echo "🏥 Running health checks..."
+          echo " Running health checks..."
           curl -f https://api.example.com/health
-          echo "✅ Health check passed"
+          echo " Health check passed"
       
       - name: Create maintenance log
         if: always()
@@ -84,7 +84,7 @@ jobs:
             github.rest.issues.create({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              title: '🔧 Scheduled Maintenance Failed',
+              title: ' Scheduled Maintenance Failed',
               body: `Maintenance failed on ${new Date().toISOString()}
               
               **Run:** ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
