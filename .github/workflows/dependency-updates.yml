@@ -24,10 +24,10 @@ jobs:
         run: |
           if [ -f "package.json" ]; then
             echo "has_package=true" >> $GITHUB_OUTPUT
-            echo "✅ Found package.json" >> $GITHUB_STEP_SUMMARY
+            echo " Found package.json" >> $GITHUB_STEP_SUMMARY
           else
             echo "has_package=false" >> $GITHUB_OUTPUT
-            echo "⚠️ No package.json found - this appears to be a static HTML project" >> $GITHUB_STEP_SUMMARY
+            echo " No package.json found - this appears to be a static HTML project" >> $GITHUB_STEP_SUMMARY
           fi
 
       - name: Setup Node.js (if package.json exists)
@@ -44,7 +44,7 @@ jobs:
         if: steps.check-package.outputs.has_package == 'true'
         id: npm-outdated
         run: |
-          echo "## 📦 NPM Dependency Update Report" >> $GITHUB_STEP_SUMMARY
+          echo "##  NPM Dependency Update Report" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           npm outdated --json > outdated.json 2>&1 || true
           
@@ -54,13 +54,13 @@ jobs:
             cat outdated.json >> $GITHUB_STEP_SUMMARY
             echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
           else
-            echo "✨ All npm dependencies are up to date!" >> $GITHUB_STEP_SUMMARY
+            echo " All npm dependencies are up to date!" >> $GITHUB_STEP_SUMMARY
           fi
 
       - name: Security audit (if applicable)
         if: steps.check-package.outputs.has_package == 'true'
         run: |
-          echo "## 🔒 Security Audit" >> $GITHUB_STEP_SUMMARY
+          echo "##  Security Audit" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           npm audit --json > audit.json 2>&1 || true
           
@@ -74,7 +74,7 @@ jobs:
       - name: Check GitHub Actions versions
         id: check-actions
         run: |
-          echo "## 🔄 GitHub Actions Version Check" >> $GITHUB_STEP_SUMMARY
+          echo "##  GitHub Actions Version Check" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "Scanning workflow files for action versions..." >> $GITHUB_STEP_SUMMARY
           
@@ -89,12 +89,12 @@ jobs:
               fi
             done
           else
-            echo "⚠️ No .github/workflows directory found" >> $GITHUB_STEP_SUMMARY
+            echo " No .github/workflows directory found" >> $GITHUB_STEP_SUMMARY
           fi
 
       - name: Check for CDN dependencies (for static sites)
         run: |
-          echo "## 🌐 CDN Dependencies Check" >> $GITHUB_STEP_SUMMARY
+          echo "##  CDN Dependencies Check" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           
           # Search for common CDN patterns in HTML/JS files
@@ -155,7 +155,7 @@ jobs:
           if npm run 2>&1 | grep -q "lint"; then
             npm run lint
           else
-            echo "ℹ️ No lint script found"
+            echo " No lint script found"
           fi
         continue-on-error: true
 
@@ -165,7 +165,7 @@ jobs:
           if npm run 2>&1 | grep -q "test"; then
             npm test
           else
-            echo "⚠️ No test script found — skipping tests"
+            echo " No test script found — skipping tests"
           fi
         continue-on-error: true
 
@@ -175,14 +175,14 @@ jobs:
           if npm run 2>&1 | grep -q "build"; then
             npm run build
           else
-            echo "ℹ️ No build script found"
+            echo " No build script found"
           fi
         continue-on-error: true
 
       - name: Validate HTML/CSS/JS (for static projects)
         if: steps.check-type.outputs.project_type == 'static'
         run: |
-          echo "## 🔍 Static File Validation" >> $GITHUB_STEP_SUMMARY
+          echo "##  Static File Validation" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           
           # Check if HTML files are valid
@@ -194,11 +194,11 @@ jobs:
           echo "- CSS files: $css_count" >> $GITHUB_STEP_SUMMARY
           echo "- JS files: $js_count" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "✅ Static files validated successfully" >> $GITHUB_STEP_SUMMARY
+          echo " Static files validated successfully" >> $GITHUB_STEP_SUMMARY
 
       - name: Check for breaking changes
         run: |
-          echo "## 🔍 Dependency Update Analysis" >> $GITHUB_STEP_SUMMARY
+          echo "##  Dependency Update Analysis" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**PR Title:** ${{ github.event.pull_request.title }}" >> $GITHUB_STEP_SUMMARY
           echo "**Updated by:** ${{ github.actor }}" >> $GITHUB_STEP_SUMMARY
@@ -208,7 +208,7 @@ jobs:
       - name: Security audit (for Node projects)
         if: steps.check-type.outputs.project_type == 'node'
         run: |
-          npm audit --audit-level=moderate || echo "⚠️ Security vulnerabilities detected"
+          npm audit --audit-level=moderate || echo " Security vulnerabilities detected"
         continue-on-error: true
 
       - name: Upload test results
@@ -250,7 +250,7 @@ jobs:
             echo "update_type=major" >> $GITHUB_OUTPUT
             echo "risk_level=high" >> $GITHUB_OUTPUT
             echo "auto_merge=false" >> $GITHUB_OUTPUT
-            COMMENT="⚠️ **Major version update detected**\n\n"
+            COMMENT=" **Major version update detected**\n\n"
             COMMENT+="This is a major version bump which may contain breaking changes.\n"
             COMMENT+="**Action required:** Manual review and testing needed before merging.\n\n"
             COMMENT+="Please review the changelog and test thoroughly."
@@ -258,28 +258,28 @@ jobs:
             echo "update_type=minor" >> $GITHUB_OUTPUT
             echo "risk_level=medium" >> $GITHUB_OUTPUT
             echo "auto_merge=false" >> $GITHUB_OUTPUT
-            COMMENT="✅ **Minor version update**\n\n"
+            COMMENT=" **Minor version update**\n\n"
             COMMENT+="This update includes new features but should be backward compatible.\n"
             COMMENT+="Automated tests have passed. Review recommended but not critical."
           elif echo "$PR_TITLE" | grep -qi "patch\|bump"; then
             echo "update_type=patch" >> $GITHUB_OUTPUT
             echo "risk_level=low" >> $GITHUB_OUTPUT
             echo "auto_merge=true" >> $GITHUB_OUTPUT
-            COMMENT="✅ **Patch update**\n\n"
+            COMMENT=" **Patch update**\n\n"
             COMMENT+="This is a patch-level update (bug fixes only).\n"
             COMMENT+="Tests have passed. Safe to merge automatically."
           else
             echo "update_type=unknown" >> $GITHUB_OUTPUT
             echo "risk_level=medium" >> $GITHUB_OUTPUT
             echo "auto_merge=false" >> $GITHUB_OUTPUT
-            COMMENT="ℹ️ **Dependency update**\n\n"
+            COMMENT=" **Dependency update**\n\n"
             COMMENT+="Review the changes and ensure compatibility."
           fi
           
           # Check for security updates
           if echo "$PR_TITLE" | grep -qi "security\|vulnerability\|cve"; then
             echo "is_security=true" >> $GITHUB_OUTPUT
-            COMMENT="🔒 **Security update detected!**\n\n"
+            COMMENT=" **Security update detected!**\n\n"
             COMMENT+="This update addresses security vulnerabilities.\n"
             COMMENT+="**Priority:** HIGH - Please review and merge as soon as possible.\n\n"
           else
@@ -303,7 +303,7 @@ jobs:
             - **Security Update:** ${{ steps.analyze.outputs.is_security }}
             - **Auto-merge eligible:** ${{ steps.analyze.outputs.auto_merge }}
             
-            <sub>🤖 Generated by Dependency Updates Automation</sub>`;
+            <sub> Generated by Dependency Updates Automation</sub>`;
             
             github.rest.issues.createComment({
               issue_number: context.issue.number,
@@ -374,7 +374,7 @@ jobs:
               repo: context.repo.repo,
               pull_number: context.issue.number,
               event: 'APPROVE',
-              body: '✅ **Automated approval** for patch-level dependency update.\n\nAll checks have passed. This update is safe to merge.'
+              body: ' **Automated approval** for patch-level dependency update.\n\nAll checks have passed. This update is safe to merge.'
             });
 
       - name: Enable auto-merge
@@ -397,7 +397,7 @@ jobs:
                 commit_title: `${{ github.event.pull_request.title }} (#${{ github.event.pull_request.number }})`,
                 commit_message: 'Automated merge of safe dependency update'
               });
-              console.log('✅ PR merged successfully');
+              console.log(' PR merged successfully');
             } catch (error) {
-              console.log('⚠️ Could not auto-merge:', error.message);
+              console.log(' Could not auto-merge:', error.message);
             }
