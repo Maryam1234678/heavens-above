@@ -20,7 +20,11 @@ jobs:
           echo "Cleaning temporary files..."
           echo "Backup completed successfully on $(date)."
           echo "Maintenance finished!"
-
+      - name: Clean old cache files
+        run: |
+          echo " Cleaning cache..."
+          find ./cache -type f -mtime +7 -delete || true
+          echo " Cache cleaned"
       - name: Save maintenance log
         run: |
           mkdir -p logs
